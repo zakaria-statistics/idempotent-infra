@@ -1,4 +1,3 @@
-# Create /etc/netplan/01-netcfg.yaml
 cat <<EOF | sudo tee /etc/netplan/01-netcfg.yaml
 network:
   version: 2
