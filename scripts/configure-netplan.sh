@@ -1,3 +1,7 @@
+#!/bin/bash
+set -euxo pipefail
+
+
 cat <<EOF | sudo tee /etc/netplan/01-netcfg.yaml
 network:
   version: 2

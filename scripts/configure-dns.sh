@@ -1,3 +1,7 @@
+#!/bin/bash
+set -euxo pipefail
+
+
 sudo systemctl stop systemd-resolved || true
 sudo systemctl disable systemd-resolved || true
 sudo rm -f /etc/resolv.conf

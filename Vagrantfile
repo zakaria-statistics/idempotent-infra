@@ -35,11 +35,13 @@ Vagrant.configure("2") do |config|
     # Provision the VM using separate scripts
     config.vm.provision "file", source: "scripts/configure-netplan.sh", destination: "/tmp/configure-netplan.sh"
     config.vm.provision "file", source: "scripts/configure-dns.sh", destination: "/tmp/configure-dns.sh"
+    config.vm.provision "file", source: "scripts/install-containerd.sh", destination: "/tmp/install-containerd.sh"
     
     # Make the scripts executable
     config.vm.provision "shell", inline: <<-SHELL
       set -euxo pipefail
       sudo bash /tmp/configure-netplan.sh
       sudo bash /tmp/configure-dns.sh
+      sudo bash /tmp/install-containerd.sh
     SHELL
 end
