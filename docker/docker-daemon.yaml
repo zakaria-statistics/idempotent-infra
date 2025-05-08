@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: docker-daemon
+  namespace: cicd
+spec:
+  selector:
+    matchLabels:
+      app: docker-daemon
+  template:
+    metadata:
+      labels:
+        app: docker-daemon
+    spec:
+      containers:
+      - name: dind
+        image: docker:dind
+        securityContext:
+          privileged: true
+        ports:
+        - containerPort: 2375
+        env:
+        - name: DOCKER_TLS_CERTDIR
+          value: ""
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        volumeMounts:
+          - name: docker-graph-storage
+            mountPath: /var/lib/docker
+          - name: docker-run
+            mountPath: /var/run
+      volumes:
+        - name: docker-graph-storage
+          emptyDir: {}
+        - name: docker-run
+          emptyDir: {}
