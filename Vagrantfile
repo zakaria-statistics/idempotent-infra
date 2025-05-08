@@ -68,4 +68,15 @@ Vagrant.configure("2") do |config|
         sudo bash /tmp/kube-start.sh
       fi
     SHELL
+
+
+    # Provision the VM using separate manifests
+    config.vm.provision "file", source: "manifests/calico.yaml", destination: "/tmp/calico.yaml"
+
+    # Apply the manifests
+    config.vm.provision "shell", inline: <<-SHELL
+      set -euxo pipefail
+      # Apply Calico manifest
+      kubectl apply -f /tmp/calico.yaml
+    SHELL
 end
