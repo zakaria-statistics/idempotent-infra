@@ -1,0 +1,83 @@
+# Resource Quota for kube-system namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: kube-system-quota
+  namespace: kube-system
+spec:
+  hard:
+    requests.cpu: "1.5"
+    requests.memory: 1Gi
+    limits.cpu: "2"
+    limits.memory: 1.2Gi
+    pods: "20"
+---
+# Resource Quota for CI/CD namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: cicd-quota
+  namespace: cicd
+spec:
+  hard:
+    requests.cpu: "1.5"
+    requests.memory: 0.8Gi
+    limits.cpu: "2"
+    limits.memory: 1Gi
+    pods: "10"
+---
+# Resource Quota for Monitoring namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: monitoring-quota
+  namespace: monitoring
+spec:
+  hard:
+    requests.cpu: "1"
+    requests.memory: 0.8Gi
+    limits.cpu: "1.5"
+    limits.memory: 1Gi
+    pods: "10"
+---
+# Resource Quota for Logging namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: logging-quota
+  namespace: logging
+spec:
+  hard:
+    requests.cpu: "0.5"
+    requests.memory: 0.4Gi
+    limits.cpu: "1"
+    limits.memory: 0.8Gi
+    pods: "5"
+---
+# Resource Quota for Database namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: database-quota
+  namespace: database
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 1.5Gi
+    limits.cpu: "2.5"
+    limits.memory: 1.8Gi
+    pods: "5"
+---
+# Resource Quota for Application namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: application-quota
+  namespace: application
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 1.2Gi
+    limits.cpu: "3"
+    limits.memory: 1.6Gi
+    pods: "20"

@@ -72,11 +72,21 @@ Vagrant.configure("2") do |config|
 
     # Provision the VM using separate manifests
     config.vm.provision "file", source: "manifests/calico.yaml", destination: "/tmp/calico.yaml"
+    config.vm.provision "file", source: "manifests/namespaces.yaml", destination: "/tmp/namespaces.yaml"
+    config.vm.provision "file", source: "manifests/namespaces-quotas.yaml", destination: "/tmp/namespaces-quotas.yaml"
+
 
     # Apply the manifests
     config.vm.provision "shell", inline: <<-SHELL
       set -euxo pipefail
       # Apply Calico manifest
-      kubectl apply -f /tmp/calico.yaml
+        kubectl apply -f /tmp/calico.yaml
+
+      # Apply namespaces manifest
+        kubectl apply -f /tmp/namespaces.yaml
+      # Apply namespaces quotas manifest
+        kubectl apply -f /tmp/namespaces-quotas.yaml
+        
+      
     SHELL
 end
