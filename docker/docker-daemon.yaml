@@ -19,9 +19,16 @@ spec:
           privileged: true
         ports:
         - containerPort: 2375
+          hostPort: 2375  # Expose Docker TCP to the node itself
         env:
         - name: DOCKER_TLS_CERTDIR
           value: ""
+        command: ["dockerd"]
+        args:
+          - "-H"
+          - "tcp://0.0.0.0:2375"
+          - "-H"
+          - "unix:///var/run/docker.sock"
         resources:
           requests:
             cpu: 100m
@@ -30,12 +37,12 @@ spec:
             cpu: 500m
             memory: 512Mi
         volumeMounts:
-          - name: docker-graph-storage
-            mountPath: /var/lib/docker
-          - name: docker-run
-            mountPath: /var/run
-      volumes:
         - name: docker-graph-storage
-          emptyDir: {}
+          mountPath: /var/lib/docker
         - name: docker-run
-          emptyDir: {}
+          mountPath: /var/run
+      volumes:
+      - name: docker-graph-storage
+        emptyDir: {}
+      - name: docker-run
+        emptyDir: {}

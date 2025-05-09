@@ -10,5 +10,3 @@ spec:
     - protocol: TCP
       port: 2375
       targetPort: 2375
-      nodePort: 32375
-  type: NodePort

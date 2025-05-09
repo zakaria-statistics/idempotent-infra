@@ -1,92 +1,188 @@
 Vagrant.configure("2") do |config|
     config.vm.box = "ubuntu/jammy64"
-    config.vm.define "kube" 
-
+    config.vm.define "kube"
+  
     config.vm.provider "virtualbox" do |vb|
-        vb.name = "kube" 
-        vb.memory = "8192"
-        vb.cpus = 12
+      vb.name = "kube"
+      vb.memory = "4096"
+      vb.cpus = 8
     end
-
-    # Configure disk size using vagrant-disksize plugin
+  
+    # Optional: Increase disk size (requires vagrant-disksize plugin)
     config.disksize.size = "50GB"
-
-    
-
-    # Host-only network (static IP for Kubernetes)
+  
+    # Static private IP for Kubernetes
     config.vm.network "private_network", ip: "192.168.56.10"
-
-    # Sync folder disabled
+  
+    # Disable synced folder
     config.vm.synced_folder ".", "/vagrant", disabled: true
 
-    # Add SSH key for logging into the VM (Windows-compatible path)
-    config.vm.provision "file", source: "C:/Users/#{ENV['USERNAME']}/.ssh/id_rsa.pub", destination: "/tmp/authorized_key_to_add"
+    # Sync folders for scripts, manifests, docker files, and Jenkins Dockerfile
+    config.vm.synced_folder "./scripts", "/home/vagrant/scripts"
+    config.vm.synced_folder "./manifests", "/home/vagrant/manifests"
+    config.vm.synced_folder "./docker", "/home/vagrant/docker"
+    config.vm.synced_folder "./jenkins", "/home/vagrant/jenkins"
+  
+    # Add SSH public key (for Windows)
+    config.vm.provision "file", source: "C:/Users/#{ENV['USERNAME']}/.ssh/id_rsa.pub", destination: "/tmp/id_rsa.pub"
     config.vm.provision "shell", inline: <<-SHELL
       mkdir -p /home/vagrant/.ssh
-      touch /home/vagrant/.ssh/authorized_keys
-      cat /tmp/authorized_key_to_add >> /home/vagrant/.ssh/authorized_keys
+      cat /tmp/id_rsa.pub >> /home/vagrant/.ssh/authorized_keys
       chmod 700 /home/vagrant/.ssh
       chmod 600 /home/vagrant/.ssh/authorized_keys
       chown -R vagrant:vagrant /home/vagrant/.ssh
     SHELL
+  
+    # Upload provisioning scripts to /tmp only if they don't exist
+    %w[
+        configure-netplan.sh
+        configure-dns.sh
+        install-containerd.sh
+        kube-preparation.sh
+        kube-install.sh
+        kube-start.sh
+    ].each do |script|
+        config.vm.provision "shell", inline: <<-SHELL
+        if [ ! -f /tmp/#{script} ]; then
+            cp /home/vagrant/scripts/#{script} /tmp/#{script}
+        fi
+        SHELL
+    end
 
-    # Provision the VM using separate scripts
-    config.vm.provision "file", source: "scripts/configure-netplan.sh", destination: "/tmp/configure-netplan.sh"
-    config.vm.provision "file", source: "scripts/configure-dns.sh", destination: "/tmp/configure-dns.sh"
-    config.vm.provision "file", source: "scripts/install-containerd.sh", destination: "/tmp/install-containerd.sh"
-    config.vm.provision "file", source: "scripts/kube-preparation.sh", destination: "/tmp/kube-preparation.sh"
-    config.vm.provision "file", source: "scripts/kube-install.sh", destination: "/tmp/kube-install.sh"
-    config.vm.provision "file", source: "scripts/kube-start.sh", destination: "/tmp/kube-start.sh"
-    
-    # Make the scripts executable and idempotent
+    # Upload Kubernetes manifests to /tmp only if they don't exist
+    %w[
+        calico.yaml
+        namespaces.yaml
+        namespaces-quotas.yaml
+    ].each do |manifest|
+        config.vm.provision "shell", inline: <<-SHELL
+        if [ ! -f /tmp/#{manifest} ]; then
+            cp /home/vagrant/manifests/#{manifest} /tmp/#{manifest}
+        fi
+        SHELL
+    end
+
+    # Upload Docker service manifests to /tmp only if they don't exist
+    %w[
+        docker-daemon.yaml
+        docker-service.yaml
+    ].each do |manifest|
+        config.vm.provision "shell", inline: <<-SHELL
+        if [ ! -f /tmp/#{manifest} ]; then
+            cp /home/vagrant/docker/#{manifest} /tmp/#{manifest}
+        fi
+        SHELL
+    end
+
+    # Upload Jenkins Dockerfile to /tmp only if it doesn't exist
+    config.vm.provision "shell", inline: <<-SHELL
+        if [ ! -f /tmp/Dockerfile ]; then
+        cp /home/vagrant/jenkins/Dockerfile /tmp/Dockerfile
+        fi
+    SHELL
+  
+    # Run provisioning steps
     config.vm.provision "shell", inline: <<-SHELL
       set -euxo pipefail
-
-      # Netplan: check if netplan config already applied (example: check for a custom marker file)
+  
+      # NETPLAN
       if ! grep -q '192.168.56.10' /etc/netplan/*.yaml; then
         sudo bash /tmp/configure-netplan.sh
       fi
-
-      # DNS: check if /etc/resolv.conf contains expected DNS (example: 8.8.8.8)
+  
+      # DNS
       if ! grep -q '8.8.8.8' /etc/resolv.conf; then
         sudo bash /tmp/configure-dns.sh
       fi
-
-      # containerd: check if installed
+  
+      # CONTAINERD
       if ! command -v containerd >/dev/null 2>&1; then
         sudo bash /tmp/install-containerd.sh
       fi
-
-      # kubeadm: check if installed
+  
+      # KUBEADM
       if ! command -v kubeadm >/dev/null 2>&1; then
         sudo bash /tmp/kube-preparation.sh
         sudo bash /tmp/kube-install.sh
       fi
-
-      # init kubeadm: check if already initialized
+  
+      # INIT K8S
       if ! kubectl cluster-info >/dev/null 2>&1; then
         sudo bash /tmp/kube-start.sh
       fi
-    SHELL
+
+      # info about docker
+      export DOCKER_HOST=tcp://localhost:32375
+      docker info
 
 
-    # Provision the VM using separate manifests
-    config.vm.provision "file", source: "manifests/calico.yaml", destination: "/tmp/calico.yaml"
-    config.vm.provision "file", source: "manifests/namespaces.yaml", destination: "/tmp/namespaces.yaml"
-    config.vm.provision "file", source: "manifests/namespaces-quotas.yaml", destination: "/tmp/namespaces-quotas.yaml"
+     # Expose Docker socket to the host
+       echo 'export DOCKER_HOST=tcp://localhost:32375' >> /home/vagrant/.bashrc
+       chown vagrant:vagrant /home/vagrant/.bashrc
 
 
-    # Apply the manifests
-    config.vm.provision "shell", inline: <<-SHELL
-      set -euxo pipefail
-      # Apply Calico manifest
+  
+      # --- APPLY K8S MANIFESTS ---
+      # Check if Calico is installed
+    if ! kubectl get pods -l k8s-app=calico-node -n kube-system --no-headers 2>/dev/null | grep -q .; then
+        echo "Installing Calico CNI..."
         kubectl apply -f /tmp/calico.yaml
+        # Wait for Calico to be ready
+        kubectl wait --for=condition=ready --timeout=120s pods -l k8s-app=calico-node -n kube-system
+        echo "Calico installation complete"
+      else
+        echo "Calico already installed, skipping"
+      fi
+  
+      # Check if each required namespace exists
+    needed_namespaces=(cicd monitoring logging database application)
+    namespaces_to_create=false
+    
+    for ns in "${needed_namespaces[@]}"; do
+      if ! kubectl get namespace $ns &>/dev/null; then
+        echo "Namespace $ns does not exist"
+        namespaces_to_create=true
+      fi
+    done
+    
+    if [ "$namespaces_to_create" = true ]; then
+      echo "Creating custom namespaces..."
+      kubectl apply -f /tmp/namespaces.yaml
+      echo "Custom namespaces creation complete"
+    else
+      echo "All required namespaces already exist, skipping"
+    fi
 
-      # Apply namespaces manifest
-        kubectl apply -f /tmp/namespaces.yaml
-      # Apply namespaces quotas manifest
-        kubectl apply -f /tmp/namespaces-quotas.yaml
-        
-      
+    # Check if each resource quota exists
+    quota_namespaces=(kube-system cicd monitoring logging database application)
+    quotas_to_create=false
+    
+    for ns in "${quota_namespaces[@]}"; do
+      quota_name="${ns}-quota"
+      if ! kubectl get resourcequota $quota_name -n $ns &>/dev/null; then
+        echo "ResourceQuota $quota_name in namespace $ns does not exist"
+        quotas_to_create=true
+      fi
+    done
+    
+    if [ "$quotas_to_create" = true ]; then
+      echo "Creating resource quotas..."
+      kubectl apply -f /tmp/namespaces-quotas.yaml
+      echo "Resource quotas creation complete"
+    else
+      echo "All required resource quotas already exist, skipping"
+    fi
+  
+      # --- APPLY DOCKER MANIFESTS ---
+      if ! kubectl get pods -n kube-system | grep -q 'docker-daemon'; then
+        kubectl apply -f /tmp/docker-daemon.yaml
+      fi
+  
+      if ! kubectl get pods -n kube-system | grep -q 'docker-service'; then
+        kubectl apply -f /tmp/docker-service.yaml
+      fi
+  
+      echo ">> Provisioning complete. You may need to run 'vagrant reload' for docker group to apply."
     SHELL
-end
+  end
+  
