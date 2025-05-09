@@ -74,13 +74,6 @@ Vagrant.configure("2") do |config|
         SHELL
     end
 
-    # Upload Jenkins Dockerfile to /tmp only if it doesn't exist
-    config.vm.provision "shell", inline: <<-SHELL
-        if [ ! -f /tmp/Dockerfile ]; then
-        cp /home/vagrant/jenkins/Dockerfile /tmp/Dockerfile
-        fi
-    SHELL
-  
     # Run provisioning steps
     config.vm.provision "shell", inline: <<-SHELL
       set -euxo pipefail
@@ -109,26 +102,13 @@ Vagrant.configure("2") do |config|
       # INIT K8S
       if ! kubectl cluster-info >/dev/null 2>&1; then
         sudo bash /tmp/kube-start.sh
-      fi
-
-      # info about docker
-      export DOCKER_HOST=tcp://localhost:32375
-      docker info
-
-
-     # Expose Docker socket to the host
-       echo 'export DOCKER_HOST=tcp://localhost:32375' >> /home/vagrant/.bashrc
-       chown vagrant:vagrant /home/vagrant/.bashrc
-
-
+      fi 
   
       # --- APPLY K8S MANIFESTS ---
       # Check if Calico is installed
     if ! kubectl get pods -l k8s-app=calico-node -n kube-system --no-headers 2>/dev/null | grep -q .; then
         echo "Installing Calico CNI..."
         kubectl apply -f /tmp/calico.yaml
-        # Wait for Calico to be ready
-        kubectl wait --for=condition=ready --timeout=120s pods -l k8s-app=calico-node -n kube-system
         echo "Calico installation complete"
       else
         echo "Calico already installed, skipping"
