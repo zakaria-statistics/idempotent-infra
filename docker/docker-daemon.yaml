@@ -34,8 +34,8 @@ spec:
             cpu: 100m
             memory: 256Mi
           limits:
-            cpu: 500m
-            memory: 512Mi
+            cpu: 300m
+            memory: 384Mi
         volumeMounts:
         - name: docker-graph-storage
           mountPath: /var/lib/docker

@@ -21,14 +21,14 @@ spec:
         image: jenkins/jenkins:lts
         resources:
           requests:
-            cpu: "500m"
-            memory: "512Mi"
+            cpu: "400m"
+            memory: "256Mi"
           limits:
-            cpu: "1000m"
-            memory: "1Gi"
+            cpu: "700m"
+            memory: "448Mi"
         env:
         - name: JAVA_OPTS
-          value: "Xms512m -Xmx1024m -XX:+UseG1GC"
+          value: "-Xms192m -Xmx384m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+UseCompressedOops -Djenkins.install.runSetupWizard=false -Djava.awt.headless=true"
         - name: DOCKER_HOST
           value: "tcp://docker-daemon.cicd.svc.cluster.local:2375"
         securityContext:

@@ -74,6 +74,22 @@ Vagrant.configure("2") do |config|
         SHELL
     end
 
+    # Upload Jenkins manifest to /tmp only if it doesn't exist
+    %w[
+        jenkins-config.yaml
+        jenkins-deployment.yaml
+        jenkins-svc.yaml
+        jenkins-pv.yaml
+        jenkins-pvc.yaml
+        jenkins-rbac.yaml
+    ].each do |manifest|
+        config.vm.provision "shell", inline: <<-SHELL
+        if [ ! -f /tmp/#{manifest} ]; then
+            cp /home/vagrant/jenkins/#{manifest} /tmp/#{manifest}
+        fi
+        SHELL
+    end
+
     # Run provisioning steps
     config.vm.provision "shell", inline: <<-SHELL
       set -euxo pipefail
@@ -154,15 +170,23 @@ Vagrant.configure("2") do |config|
     fi
   
       # --- APPLY DOCKER MANIFESTS ---
-      if ! kubectl get pods -n kube-system | grep -q 'docker-daemon'; then
+      if ! kubectl get pods -l app=docker-daemon -n cicd --no-headers 2>/dev/null | grep -q .; then
         kubectl apply -f /tmp/docker-daemon.yaml
-      fi
-  
-      if ! kubectl get pods -n kube-system | grep -q 'docker-service'; then
         kubectl apply -f /tmp/docker-service.yaml
       fi
-  
-      echo ">> Provisioning complete. You may need to run 'vagrant reload' for docker group to apply."
+
+
+      # --- APPLY JENKINS MANIFESTS ---
+        if ! kubectl get pods -l app=jenkins -n cicd --no-headers 2>/dev/null | grep -q .; then
+            kubectl apply -f /tmp/jenkins-rbac.yaml
+            mkdir -p /mnt/data/jenkins
+            sudo chown -R 1000:1000 /mnt/data/jenkins
+            kubectl apply -f /tmp/jenkins-pv.yaml
+            kubectl apply -f /tmp/jenkins-pvc.yaml
+            kubectl apply -f /tmp/jenkins-config.yaml
+            kubectl apply -f /tmp/jenkins-deployment.yaml
+            kubectl apply -f /tmp/jenkins-svc.yaml
+        fi
     SHELL
   end
   
