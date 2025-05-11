@@ -108,7 +108,6 @@ Vagrant.configure("2") do |config|
         # Export env var and check Docker info
         export DOCKER_HOST=tcp://localhost:32075
         docker info
-
     SHELL
 
 end
