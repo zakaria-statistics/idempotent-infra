@@ -4,8 +4,8 @@ Vagrant.configure("2") do |config|
 
     config.vm.provider "virtualbox" do |vb|
         vb.name = "kube" 
-        vb.memory = "8192"
-        vb.cpus = 12
+        vb.memory = "4096" # 4GB
+        vb.cpus = 8
     end
 
     # Configure disk size using vagrant-disksize plugin
@@ -37,6 +37,7 @@ Vagrant.configure("2") do |config|
     config.vm.provision "file", source: "scripts/kube-preparation.sh", destination: "/tmp/kube-preparation.sh"
     config.vm.provision "file", source: "scripts/kube-install.sh", destination: "/tmp/kube-install.sh"
     config.vm.provision "file", source: "scripts/kube-start.sh", destination: "/tmp/kube-start.sh"
+    config.vm.provision "file", source: "scripts/docker-cli.sh", destination: "/tmp/docker-cli.sh"
     
     # Make the scripts executable and idempotent
     config.vm.provision "shell", inline: <<-SHELL
@@ -67,6 +68,11 @@ Vagrant.configure("2") do |config|
       if ! kubectl cluster-info >/dev/null 2>&1; then
         sudo bash /tmp/kube-start.sh
       fi
+
+      # install docker: check if installed
+      if ! command -v docker >/dev/null 2>&1; then
+        sudo bash /tmp/docker-cli.sh
+      fi
     SHELL
 
 
@@ -85,8 +91,24 @@ Vagrant.configure("2") do |config|
       # Apply namespaces manifest
         kubectl apply -f /tmp/namespaces.yaml
       # Apply namespaces quotas manifest
-        kubectl apply -f /tmp/namespaces-quotas.yaml
-        
-      
+        kubectl apply -f /tmp/namespaces-quotas.yaml 
     SHELL
+
+    # Provision the VM with docker manifests
+    config.vm.provision "file", source: "docker/docker-daemon.yaml", destination: "/tmp/docker-daemon.yaml"
+    config.vm.provision "file", source: "docker/docker-service.yaml", destination: "/tmp/docker-service.yaml"
+
+    config.vm.provision "shell", inline: <<-SHELL
+      set -euxo pipefail
+      # Apply Docker daemon manifest
+        kubectl apply -f /tmp/docker-daemon.yaml
+      # Apply Docker service manifest
+        kubectl apply -f /tmp/docker-service.yaml
+
+        # Export env var and check Docker info
+        export DOCKER_HOST=tcp://localhost:32075
+        docker info
+
+    SHELL
+
 end

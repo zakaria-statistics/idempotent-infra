@@ -10,5 +10,5 @@ spec:
     - protocol: TCP
       port: 2375
       targetPort: 2375
-      nodePort: 32375
+      nodePort: 32075  # NodePort to access Docker daemon externally
   type: NodePort
