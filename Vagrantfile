@@ -41,6 +41,7 @@ Vagrant.configure("2") do |config|
       kube-install.sh
       kube-start.sh
       docker-cli.sh
+      docker-daemon-status.sh
   ].each do |script|
       config.vm.provision "shell", inline: <<-SHELL
       if [ ! -f /tmp/#{script} ]; then
@@ -164,11 +165,8 @@ Vagrant.configure("2") do |config|
       kubectl apply -f /tmp/docker-service.yaml
     fi
 
-    # Docker info and export DOCKER_HOST
-    if ! grep -q 'DOCKER_HOST' /home/vagrant/.bashrc; then
-      echo "export DOCKER_HOST=tcp://localhost:32075" >> /home/vagrant/.bashrc
-    fi
-    docker info
-  
+    # docker daemon status
+    bash /tmp/docker-daemon-status.sh
+
   SHELL
 end

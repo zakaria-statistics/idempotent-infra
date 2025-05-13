@@ -2,7 +2,7 @@
 set -euxo pipefail
 
 # Update & Install Tools
-sudo apt-get update && sudo apt-get upgrade -y
+# sudo apt-get update && sudo apt-get upgrade -y
 sudo apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release \
   software-properties-common jq conntrack socat ebtables ethtool net-tools \
   ipvsadm ipset nftables
