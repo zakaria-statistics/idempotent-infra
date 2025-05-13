@@ -1,0 +1,2 @@
+kubectl patch pvc jenkins-pvc -n cicd -p '{"metadata":{"finalizers":null}}' --type=merge
+ssh -i C:/Users/zakar/.ssh/id_rsa vagrant@192.168.56.10

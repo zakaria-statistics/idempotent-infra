@@ -4,14 +4,12 @@ Vagrant.configure("2") do |config|
 
     config.vm.provider "virtualbox" do |vb|
         vb.name = "kube" 
-        vb.memory = "8192"
-        vb.cpus = 12
+        vb.memory = "4096"
+        vb.cpus = 8
     end
 
     # Configure disk size using vagrant-disksize plugin
     config.disksize.size = "50GB"
-
-    
 
     # Host-only network (static IP for Kubernetes)
     config.vm.network "private_network", ip: "192.168.56.10"
@@ -37,6 +35,12 @@ Vagrant.configure("2") do |config|
     config.vm.provision "file", source: "scripts/kube-preparation.sh", destination: "/tmp/kube-preparation.sh"
     config.vm.provision "file", source: "scripts/kube-install.sh", destination: "/tmp/kube-install.sh"
     config.vm.provision "file", source: "scripts/kube-start.sh", destination: "/tmp/kube-start.sh"
+    config.vm.provision "file", source: "scripts/gen-docker-secret.sh", destination: "/tmp/gen-docker-secret.sh"
+    config.vm.provision "file", source: "scripts/gen-git-secret.sh", destination: "/tmp/gen-git-secret.sh"
+    config.vm.provision "file", source: "tools/kaniko-job.yaml", destination: "/tmp/kaniko-job.yaml"
+    config.vm.provision "file", source: "tools/kaniko-config.yaml", destination: "/tmp/kaniko-config.yaml"
+
+
     
     # Make the scripts executable and idempotent
     config.vm.provision "shell", inline: <<-SHELL
@@ -67,6 +71,27 @@ Vagrant.configure("2") do |config|
       if ! kubectl cluster-info >/dev/null 2>&1; then
         sudo bash /tmp/kube-start.sh
       fi
+
+      # Generate Docker secret: check if already generated
+      if ! kubectl get secret regcred -n cicd >/dev/null 2>&1; then
+        sudo bash /tmp/gen-docker-secret.sh
+      fi
+
+      # Generate Git secret: check if already generated
+      if ! kubectl get secret git-credentials -n cicd >/dev/null 2>&1; then
+        sudo bash /tmp/gen-git-secret.sh
+      fi
+
+      # Create kaniko job: check if already created
+      if ! kubectl get job kaniko -n cicd >/dev/null 2>&1; then
+        kubectl apply -f /tmp/kaniko-job.yaml
+      fi
+
+      # Create kaniko config: check if already created
+      if ! kubectl get configmap kaniko-config -n cicd >/dev/null 2>&1; then
+        kubectl apply -f /tmp/kaniko-config.yaml
+      fi
+
     SHELL
 
 

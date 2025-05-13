@@ -1,0 +1,51 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kaniko-generic-build
+  namespace: cicd
+spec:
+  template:
+    spec:
+      containers:
+      - name: kaniko
+        image: gcr.io/kaniko-project/executor:latest
+        env:
+        - name: BUILD_CONTEXT
+          valueFrom:
+            configMapKeyRef:
+              name: kaniko-build-config
+              key: context
+        - name: DOCKERFILE_PATH
+          valueFrom:
+            configMapKeyRef:
+              name: kaniko-build-config
+              key: dockerfile
+        - name: DESTINATION_IMAGE
+          valueFrom:
+            configMapKeyRef:
+              name: kaniko-build-config
+              key: destination
+        - name: GIT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: git-credentials
+              key: username
+        - name: GIT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: git-credentials
+              key: password
+        args:
+          - "--dockerfile=$(DOCKERFILE_PATH)"
+          - "--context=$(BUILD_CONTEXT)"
+          - "--destination=$(DESTINATION_IMAGE)"
+          - "--build-arg=GIT_USERNAME=$(GIT_USERNAME)"
+          - "--build-arg=GIT_PASSWORD=$(GIT_PASSWORD)"
+        volumeMounts:
+        - name: kaniko-secret
+          mountPath: /kaniko/.docker
+      restartPolicy: Never
+      volumes:
+      - name: kaniko-secret
+        secret:
+          secretName: regcred

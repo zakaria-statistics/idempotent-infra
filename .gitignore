@@ -39,3 +39,6 @@ build/
 
 ### .vagrant ###
 .vagrant/
+
+### env files ###
+*.env
