@@ -83,12 +83,12 @@ Vagrant.configure("2") do |config|
       fi
 
       # Create kaniko job: check if already created
-      if ! kubectl get job kaniko -n cicd >/dev/null 2>&1; then
+      if ! kubectl get job kaniko-generic-build -n cicd >/dev/null 2>&1; then
         kubectl apply -f /tmp/kaniko-job.yaml
       fi
 
       # Create kaniko config: check if already created
-      if ! kubectl get configmap kaniko-config -n cicd >/dev/null 2>&1; then
+      if ! kubectl get configmap kaniko-build-config -n cicd >/dev/null 2>&1; then
         kubectl apply -f /tmp/kaniko-config.yaml
       fi
 
