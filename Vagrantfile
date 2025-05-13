@@ -4,8 +4,8 @@ Vagrant.configure("2") do |config|
 
     config.vm.provider "virtualbox" do |vb|
         vb.name = "kube" 
-        vb.memory = "4096"
-        vb.cpus = 8
+        vb.memory = "6144"
+        vb.cpus = 10
     end
 
     # Configure disk size using vagrant-disksize plugin
@@ -37,6 +37,9 @@ Vagrant.configure("2") do |config|
     config.vm.provision "file", source: "scripts/kube-start.sh", destination: "/tmp/kube-start.sh"
     config.vm.provision "file", source: "scripts/gen-docker-secret.sh", destination: "/tmp/gen-docker-secret.sh"
     config.vm.provision "file", source: "scripts/gen-git-secret.sh", destination: "/tmp/gen-git-secret.sh"
+    config.vm.provision "file", source: "manifests/calico.yaml", destination: "/tmp/calico.yaml"
+    config.vm.provision "file", source: "manifests/namespaces.yaml", destination: "/tmp/namespaces.yaml"
+    config.vm.provision "file", source: "manifests/namespaces-quotas.yaml", destination: "/tmp/namespaces-quotas.yaml"
     config.vm.provision "file", source: "tools/kaniko-job.yaml", destination: "/tmp/kaniko-job.yaml"
     config.vm.provision "file", source: "tools/kaniko-config.yaml", destination: "/tmp/kaniko-config.yaml"
 
@@ -72,46 +75,77 @@ Vagrant.configure("2") do |config|
         sudo bash /tmp/kube-start.sh
       fi
 
+      # --- APPLY K8S MANIFESTS ---
+    # Check if Calico is installed
+  if ! kubectl get pods -l k8s-app=calico-node -n kube-system --no-headers 2>/dev/null | grep -q .; then
+      echo "Installing Calico CNI..."
+      kubectl apply -f /tmp/calico.yaml
+      echo "Calico installation complete"
+    else
+      echo "Calico already installed, skipping"
+    fi
+
+    # Check if each required namespace exists
+    needed_namespaces=(cicd build monitoring logging database application)
+    namespaces_to_create=false
+  
+    for ns in "${needed_namespaces[@]}"; do
+      if ! kubectl get namespace $ns &>/dev/null; then
+        echo "Namespace $ns does not exist"
+        namespaces_to_create=true
+      fi
+    done
+  
+    if [ "$namespaces_to_create" = true ]; then
+      echo "Creating custom namespaces..."
+      kubectl apply -f /tmp/namespaces.yaml
+      echo "Custom namespaces creation complete"
+    else
+      echo "All required namespaces already exist, skipping"
+    fi
+
+    # Check if each resource quota exists
+    quota_namespaces=(kube-system build cicd monitoring logging database application)
+    quotas_to_create=false
+  
+    for ns in "${quota_namespaces[@]}"; do
+      quota_name="${ns}-quota"
+      if ! kubectl get resourcequota $quota_name -n $ns &>/dev/null; then
+        echo "ResourceQuota $quota_name in namespace $ns does not exist"
+        quotas_to_create=true
+      fi
+    done
+  
+    if [ "$quotas_to_create" = true ]; then
+      echo "Creating resource quotas..."
+      kubectl apply -f /tmp/namespaces-quotas.yaml
+      echo "Resource quotas creation complete"
+    else
+      echo "All required resource quotas already exist, skipping"
+    fi
+
+
       # Generate Docker secret: check if already generated
-      if ! kubectl get secret regcred -n cicd >/dev/null 2>&1; then
+      if ! kubectl get secret regcred -n build >/dev/null 2>&1; then
         sudo bash /tmp/gen-docker-secret.sh
       fi
 
       # Generate Git secret: check if already generated
-      if ! kubectl get secret git-credentials -n cicd >/dev/null 2>&1; then
+      if ! kubectl get secret git-credentials -n build >/dev/null 2>&1; then
         sudo bash /tmp/gen-git-secret.sh
       fi
 
-      # Create kaniko job: check if already created
-      if ! kubectl get job kaniko-generic-build -n cicd >/dev/null 2>&1; then
-        kubectl apply -f /tmp/kaniko-job.yaml
-      fi
-
       # Create kaniko config: check if already created
-      if ! kubectl get configmap kaniko-build-config -n cicd >/dev/null 2>&1; then
+      if ! kubectl get configmap kaniko-build-config -n build >/dev/null 2>&1; then
         kubectl apply -f /tmp/kaniko-config.yaml
       fi
 
+      # Create kaniko job: check if already created
+       #if ! kubectl get job debug-kaniko -n build >/dev/null 2>&1; then
+        kubectl apply -f /tmp/kaniko-job.yaml
+       #fi
+
+
     SHELL
 
-
-    # Provision the VM using separate manifests
-    config.vm.provision "file", source: "manifests/calico.yaml", destination: "/tmp/calico.yaml"
-    config.vm.provision "file", source: "manifests/namespaces.yaml", destination: "/tmp/namespaces.yaml"
-    config.vm.provision "file", source: "manifests/namespaces-quotas.yaml", destination: "/tmp/namespaces-quotas.yaml"
-
-
-    # Apply the manifests
-    config.vm.provision "shell", inline: <<-SHELL
-      set -euxo pipefail
-      # Apply Calico manifest
-        kubectl apply -f /tmp/calico.yaml
-
-      # Apply namespaces manifest
-        kubectl apply -f /tmp/namespaces.yaml
-      # Apply namespaces quotas manifest
-        kubectl apply -f /tmp/namespaces-quotas.yaml
-        
-      
-    SHELL
 end

@@ -1,0 +1,61 @@
+# ⚙️ Managed Kubernetes Build & Execution Environment
+
+This branch provides a fully managed solution to **provision a virtual machine**, **bootstrap a Kubernetes cluster**, and **enable container image builds using Kaniko**.
+
+---
+
+## 📌 Features & Workflow
+
+### 1. VM Provisioning
+
+Creates a virtual machine with the following specifications:
+
+- **CPU**: 10 cores  
+- **RAM**: 6 GB  
+- **Disk**: 50 GB  
+- **Network Interfaces**:
+  - NAT (for internet access)
+  - Host-only (for communication with the host)
+
+### 2. SSH Key Transport
+
+Transfers your local SSH public key to the VM, enabling passwordless access for future logins.
+
+### 3. Kubernetes Cluster Initialization
+
+- Applies base system configuration:
+  - Sets up networking with `netplan`
+  - Configures DNS resolution
+  - Installs essential CLI tools
+- Installs required components:
+  - **Container runtime**: `containerd`
+  - **Kubernetes tools**: `kubeadm`, `kubelet`, `kubectl`
+- Initializes the Kubernetes control plane:
+  - Binds Kubernetes to the host-only network interface
+  - Installs a modified **Calico CNI** for pod networking
+
+### 4. Namespace & Resource Quota Management
+
+- Applies dedicated namespaces for environments or teams
+- Enforces resource quotas to limit CPU and memory usage within each namespace
+
+### 5. Kaniko-Based Image Build System
+
+- Deploys Kaniko Jobs inside Kubernetes for container image building
+- Supports:
+  - Git-based context cloning using `initContainers`
+  - Secure Docker registry push using `regcred` secret
+  - GitHub authentication via `git-credentials` secret
+  - Dynamic build configuration using a ConfigMap
+
+---
+
+## 🚀 Getting Started
+
+> You can provision everything using provided scripts. Make sure you have Vagrant and VirtualBox installed on your host machine.
+
+### Build and Provision:
+
+```bash
+vagrant up
+

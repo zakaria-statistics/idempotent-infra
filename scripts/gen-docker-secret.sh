@@ -4,10 +4,12 @@
 source "$(dirname "$0")/docker-creds.env"
 
 # Variables
-NAMESPACE="cicd"
+NAMESPACE="build"
 SECRET_NAME="regcred"
 
-# Create secret
+# Load Docker credentials from external file
+source "$(dirname "$0")/docker-creds.env"
+
 kubectl create secret docker-registry $SECRET_NAME \
   --docker-server=$DOCKER_SERVER \
   --docker-username=$DOCKER_USERNAME \

@@ -1,0 +1,80 @@
+---
+- name: Initialize Kubernetes control plane
+  hosts: vm
+  become: true
+  vars:
+    pod_cidr: "10.244.0.0/16"
+    cri_socket: "unix:///run/containerd/containerd.sock"
+    node_name: "{{ ansible_hostname.split('.')[0] }}"
+    control_plane_iface: "enp0s8"
+    kubernetes_version: "1.28.0"
+    kubeadm_path: "/usr/bin/kubeadm"
+    kube_config_path: "{{ ansible_env.HOME }}/.kube"
+
+  tasks:
+
+    # ... (previous tasks unchanged)
+
+    - name: Wait for containerd socket
+      wait_for:
+        path: "{{ cri_socket | regex_replace('^unix://', '') }}"
+        timeout: 60
+        state: present
+
+    - name: Wait for kubelet to be active
+      shell: |
+        systemctl is-active kubelet
+      register: kubelet_check
+      retries: 10
+      delay: 5
+      until: kubelet_check.stdout == "active"
+      changed_when: false
+
+    - name: Wait for Kubernetes API server to be reachable
+      uri:
+        url: "https://{{ master_ip }}:6443/healthz"
+        method: GET
+        validate_certs: no
+        status_code: 200
+      register: api_health
+      retries: 15
+      delay: 10
+      until: api_health.status == 200
+      ignore_errors: true  # because API might not be up yet until after init
+
+    - name: Debug system load (optional)
+      shell: uptime
+      register: uptime_output
+      changed_when: false
+
+    - name: Debug disk IO wait (optional)
+      shell: iostat -x | grep avg-cpu -A 1
+      register: iostat_output
+      changed_when: false
+      ignore_errors: true
+
+    - name: Initialize Kubernetes control plane
+      command: >
+        {{ kubeadm_path }} init
+        --apiserver-advertise-address={{ master_ip }}
+        --apiserver-cert-extra-sans={{ master_ip }}
+        --pod-network-cidr={{ pod_cidr }}
+        --node-name {{ node_name }}
+        --ignore-preflight-errors=Swap,Port-6443,Port-10259,Port-10257,Port-10250,Port-2379,Port-2380,FileAvailable--etc-kubernetes-manifests-kube-apiserver.yaml,FileAvailable--etc-kubernetes-manifests-kube-controller-manager.yaml,FileAvailable--etc-kubernetes-manifests-kube-scheduler.yaml,FileAvailable--etc-kubernetes-manifests-etcd.yaml,DirAvailable--var-lib-etcd
+        --cri-socket={{ cri_socket }}
+      register: kubeadm_init
+      failed_when: kubeadm_init.rc != 0
+
+    # ... (rest of your tasks)
+
+
+- name: Wait for etcd to respond
+  uri:
+    url: "https://127.0.0.1:2379/health"
+    method: GET
+    validate_certs: no
+  register: etcd_health
+  retries: 10
+  delay: 5
+  until: etcd_health.status == 200
+  ignore_errors: true

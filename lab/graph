@@ -1,0 +1,13 @@
+container runtime + kubelet
+        ↓
+  kube-apiserver (static pod)
+        ↓
+  etcd, scheduler, controller-manager
+        ↓
+  install CNI plugin (manually)
+        ↓
+     CoreDNS becomes ready
+        ↓
+     Worker nodes can join
+        ↓
+     System and user workloads
