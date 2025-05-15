@@ -1,0 +1,42 @@
+# 🛠️ VM-Based Kubernetes Bootstrap & Image Building (vm-tools Branch)
+
+This branch automates the setup of a Kubernetes environment with a strong focus on **local control from a provisioned VM**, using installed tools like **Docker CLI** to build container images and push them directly to a Docker daemon running **inside the cluster**.
+
+---
+
+## 🚩 What This Branch Does
+
+### ✅ Common Foundation
+
+- Provisions a **virtual machine** using Vagrant with:
+  - 10 CPUs
+  - 6 GB RAM
+  - 50 GB disk
+  - Two NICs: NAT + Host-only
+- Copies your local SSH key to the VM for seamless future logins
+- Configures the VM for network access and DNS resolution
+- Installs Kubernetes components:
+  - `kubeadm`, `kubelet`, `kubectl`
+  - Container runtime: `containerd`
+- Initializes the cluster on the host-only network
+- Applies **Calico** as the CNI plugin
+- Creates Kubernetes namespaces with associated **resource quotas**
+
+---
+
+## 🔨 Image Building Strategy (vm-tools Branch Specific)
+
+This branch **does not embed build tools inside Jenkins or cluster jobs**. Instead:
+
+- **Docker CLI is installed directly on the VM**
+- The VM communicates with a **Docker daemon inside the Kubernetes cluster** (via DaemonSet or Docker-exposed pod) and exporting env vars for direct connection
+- Images such as Jenkins (custom image) or supporting components are built locally (inside VM) and pushed to a remote registry
+
+---
+
+## 🧱 Use Case: Build and Push Init Image (e.g., Jenkins)
+
+1. **Ensure Docker CLI is installed inside the VM and connected to docker daemon**
+
+   ```bash
+   sudo docker info
