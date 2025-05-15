@@ -1,0 +1,65 @@
+# ⚙️ Managed Kubernetes Environment with Jenkins-Based Image Builds
+
+This branch offers a managed, automated setup to **provision a virtual machine**, **bootstrap a Kubernetes cluster**, and **deploy Jenkins** to build container images using **Docker CLI** inside Kubernetes.
+
+---
+
+## 📌 Features & Workflow
+
+### 1. VM Provisioning
+
+Creates a virtual machine with the following specifications:
+
+- **CPU**: 10 cores  
+- **RAM**: 6 GB  
+- **Disk**: 50 GB  
+- **Network Interfaces**:
+  - NAT (for internet access)
+  - Host-only (for communication with the host)
+
+### 2. SSH Key Transport
+
+Transfers your local SSH public key to the VM, enabling passwordless access for future logins.
+
+### 3. Kubernetes Cluster Initialization
+
+- Applies system-level configuration:
+  - Configures networking via `netplan`
+  - Sets DNS resolution
+  - Installs CLI tools and dependencies
+- Installs required components:
+  - **Container runtime**: `containerd`
+  - **Kubernetes tools**: `kubeadm`, `kubelet`, `kubectl`
+- Initializes the control-plane node:
+  - Uses the host-only network for API binding
+  - Installs a **Calico CNI** for pod networking
+
+### 4. Namespace & Resource Quota Management
+
+- Defines Kubernetes **namespaces** for organizational isolation
+- Applies **resource quotas** to limit CPU and memory usage within namespaces
+
+### 5. Jenkins-Based Build Automation
+
+- Deploys a **Jenkins instance inside the cluster**
+- Jenkins is preloaded with:
+  - **Docker CLI** to build and push container images
+  - **kubectl** to interact with the Kubernetes cluster
+- Jenkins builds happen in pods that:
+  - Mount the Docker socket (via a deployed Docker daemon set or privileged pod)
+  - Use GitHub sources for Docker build contexts
+- Supports CI/CD pipelines for:
+  - Image building and tagging
+  - Pushing to Docker registries
+  - Deploying workloads inside the cluster
+
+---
+
+## 🚀 Getting Started
+
+> Make sure you have **Vagrant**, **VirtualBox**, and `kubectl` installed.
+
+### 1. Provision the VM
+
+```bash
+vagrant up
