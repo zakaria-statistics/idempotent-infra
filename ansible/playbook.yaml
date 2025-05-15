@@ -1,0 +1,20 @@
+- hosts: vm
+  become: yes
+  tasks:
+    - name: Run configure-dns
+      script: scripts/configure-dns.sh
+
+    - name: Run configure-netplan
+      script: scripts/configure-netplan.sh
+
+    - name: Install containerd
+      script: scripts/install-containerd.sh
+
+    - name: Install Kubernetes components
+      script: scripts/kube-install.sh
+
+    - name: Prepare Kubernetes cluster
+      script: scripts/kube-preparation.sh
+
+    - name: Start Kubernetes cluster
+      script: scripts/kube-start.sh

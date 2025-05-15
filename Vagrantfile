@@ -15,14 +15,23 @@ Vagrant.configure("2") do |config|
       vb.cpus = 2
     end
 
+    ansible.vm.provision "shell", inline: <<-SHELL
+      sudo apt update
+      sudo apt install -y ansible
+    SHELL
+
+
     ansible.vm.network "private_network", ip: "192.168.56.20"
 
     # Sync only the ansible folder (playbooks, scripts)
     ansible.vm.synced_folder ANSIBLE_SYNC_HOST, ANSIBLE_SYNC_GUEST
 
     ansible.vm.provision "file", source: "#{ENV['HOME']}/.ssh/id_rsa.pub", destination: "/tmp/id_rsa.pub"
+    ansible.vm.provision "file", source: "#{ENV['HOME']}/.ssh/id_rsa", destination: "/tmp/id_rsa"
     ansible.vm.provision "shell", inline: <<-SHELL
       mkdir -p /home/vagrant/.ssh
+      cat /tmp/id_rsa >> /home/vagrant/.ssh/id_rsa
+      chmod 600 /home/vagrant/.ssh/id_rsa
       cat /tmp/id_rsa.pub >> /home/vagrant/.ssh/authorized_keys
       chmod 700 /home/vagrant/.ssh
       chmod 600 /home/vagrant/.ssh/authorized_keys
@@ -38,8 +47,8 @@ Vagrant.configure("2") do |config|
 
     kube.vm.provider "virtualbox" do |vb|
       vb.name = "kube"
-      vb.memory = 8192
-      vb.cpus = 12
+      vb.memory = 4096
+      vb.cpus = 8
       if Vagrant.has_plugin?("vagrant-disksize")
         kube.disksize.size = "50GB"
       end
@@ -48,7 +57,7 @@ Vagrant.configure("2") do |config|
     kube.vm.network "private_network", ip: "192.168.56.10"
 
      # Sync folder disabled
-    config.vm.synced_folder ".", "/vagrant", disabled: true
+    kube.vm.synced_folder ".", "/vagrant", disabled: true
 
     kube.vm.provision "file", source: "#{ENV['HOME']}/.ssh/id_rsa.pub", destination: "/tmp/id_rsa.pub"
     kube.vm.provision "shell", inline: <<-SHELL
