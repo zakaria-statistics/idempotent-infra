@@ -1,0 +1,9 @@
+---
+# main-playbook.yml
+#- import_playbook: inspect-file.yml
+#- import_playbook: netplan-config.yml
+#- import_playbook: dns-config.yml
+#- import_playbook: install-containerd.yml
+#- import_playbook: prepare-kube.yml
+#- import_playbook: install-kube.yml
+- import_playbook: start-kube.yml

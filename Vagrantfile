@@ -15,12 +15,6 @@ Vagrant.configure("2") do |config|
       vb.cpus = 2
     end
 
-    ansible.vm.provision "shell", inline: <<-SHELL
-      sudo apt update
-      sudo apt install -y ansible
-    SHELL
-
-
     ansible.vm.network "private_network", ip: "192.168.56.20"
 
     # Sync only the ansible folder (playbooks, scripts)
@@ -29,14 +23,32 @@ Vagrant.configure("2") do |config|
     ansible.vm.provision "file", source: "#{ENV['HOME']}/.ssh/id_rsa.pub", destination: "/tmp/id_rsa.pub"
     ansible.vm.provision "file", source: "#{ENV['HOME']}/.ssh/id_rsa", destination: "/tmp/id_rsa"
     ansible.vm.provision "shell", inline: <<-SHELL
+      
+      # Set up for vagrant
       mkdir -p /home/vagrant/.ssh
-      cat /tmp/id_rsa >> /home/vagrant/.ssh/id_rsa
-      chmod 600 /home/vagrant/.ssh/id_rsa
-      cat /tmp/id_rsa.pub >> /home/vagrant/.ssh/authorized_keys
+      mkdir -p /home/vagrant/.ssh
+      cp /tmp/id_rsa /home/vagrant/.ssh/id_rsa
+      cp /tmp/id_rsa.pub /home/vagrant/.ssh/authorized_keys
       chmod 700 /home/vagrant/.ssh
-      chmod 600 /home/vagrant/.ssh/authorized_keys
+      chmod 600 /home/vagrant/.ssh/id_rsa /home/vagrant/.ssh/authorized_keys
       chown -R vagrant:vagrant /home/vagrant/.ssh
+
+      # Set up for root
+      mkdir -p /root/.ssh
+      cp /tmp/id_rsa /root/.ssh/id_rsa
+      cp /tmp/id_rsa.pub /root/.ssh/authorized_keys
+      chmod 700 /root/.ssh
+      chmod 600 /root/.ssh/id_rsa /root/.ssh/authorized_keys
+      chown -R root:root /root/.ssh
+
+      # clean up
       rm /tmp/id_rsa.pub
+      rm /tmp/id_rsa
+
+      # Install Ansible
+      sudo apt update
+      sudo apt install -y ansible
+
     SHELL
   end
 
@@ -69,5 +81,7 @@ Vagrant.configure("2") do |config|
       rm /tmp/id_rsa.pub
     SHELL
   end
+
+  
 
 end

@@ -1,0 +1,69 @@
+---
+- name: Install containerd on Ubuntu
+  hosts: all
+  become: yes
+  tasks:
+    - name: Install prerequisites
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+        state: present
+        update_cache: yes
+
+    - name: Add Docker GPG key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch={{ ansible_architecture }} signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        filename: docker
+        state: present
+
+    - name: Install containerd.io
+      apt:
+        name: containerd.io
+        state: present
+        update_cache: yes
+
+    - name: Create containerd config directory
+      file:
+        path: /etc/containerd
+        state: directory
+        mode: 0755
+
+    - name: Generate default containerd config
+      command: containerd config default
+      register: containerd_default_config
+
+    - name: Write containerd config file
+      copy:
+        dest: /etc/containerd/config.toml
+        content: "{{ containerd_default_config.stdout }}"
+
+    - name: Set SystemdCgroup to true in containerd config
+      replace:
+        path: /etc/containerd/config.toml
+        regexp: '^SystemdCgroup = false'
+        replace: 'SystemdCgroup = true'
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
+    - name: Restart and enable containerd
+      systemd:
+        name: containerd
+        state: restarted
+        enabled: yes
+
+    - name: Check containerd status
+      systemd:
+        name: containerd
+        enabled: yes
+      register: containerd_status
+      failed_when: containerd_status.status.ActiveState != "active"

@@ -1,0 +1,30 @@
+---
+- name: Check kubeadm on target VM
+  hosts: vm
+  become: true
+  tasks:
+    - name: Show current user
+      command: whoami
+      register: current_user
+
+    - name: Display current user
+      debug:
+        var: current_user.stdout
+
+    - name: Check if kubeadm exists
+      stat:
+        path: /usr/bin/kubeadm
+      register: kubeadm_stat
+
+    - name: Show kubeadm stat
+      debug:
+        var: kubeadm_stat
+
+    - name: Try kubeadm version
+      command: /usr/bin/kubeadm version
+      register: kubeadm_version
+      failed_when: false
+
+    - name: Show kubeadm version
+      debug:
+        var: kubeadm_version

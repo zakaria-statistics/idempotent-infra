@@ -1,0 +1,51 @@
+---
+- name: Install Kubernetes components
+  hosts: all
+  become: yes
+  vars:
+    kubernetes_version: "v1.30"
+    kubernetes_install_version: "1.30.0-1.1"
+
+  tasks:
+    - name: Add Kubernetes apt key
+      ansible.builtin.apt_key:
+        url: "https://pkgs.k8s.io/core:/stable:/{{ kubernetes_version }}/deb/Release.key"
+        state: present
+        keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+    - name: Add Kubernetes apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/{{ kubernetes_version }}/deb/ /"
+        filename: kubernetes
+        state: present
+
+    - name: Install kubelet, kubectl, kubeadm
+      apt:
+        name:
+          - "kubelet={{ kubernetes_install_version }}"
+          - "kubectl={{ kubernetes_install_version }}"
+          - "kubeadm={{ kubernetes_install_version }}"
+        state: present
+        update_cache: yes
+
+    - name: Hold kubelet, kubeadm, kubectl packages
+      command: apt-mark hold {{ item }}
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+
+
+    - name: Get IP address of enp0s8
+      command: ip -o -4 addr list enp0s8
+      register: enp0s8_ip
+
+    - name: Set KUBELET_EXTRA_ARGS environment variable for node IP
+      copy:
+        dest: /etc/default/kubelet
+        content: "KUBELET_EXTRA_ARGS=--node-ip={{ enp0s8_ip.stdout.split()[3].split('/')[0] }}"
+
+    - name: Restart kubelet
+      systemd:
+        name: kubelet
+        state: restarted
