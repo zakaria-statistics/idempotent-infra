@@ -149,6 +149,17 @@
         group: "{{ ansible_user_id }}"
         mode: "0644"
 
+    - name: Wait for API server to respond
+      uri:
+        url: "https://{{ master_ip }}:6443/healthz"
+        method: GET
+        validate_certs: no
+        status_code: 200
+      register: api_health
+      retries: 15
+      delay: 10
+      until: api_health.status == 200
+
     - name: Allow pods on control plane node
       command: kubectl taint nodes --all node-role.kubernetes.io/control-plane-
       environment:
