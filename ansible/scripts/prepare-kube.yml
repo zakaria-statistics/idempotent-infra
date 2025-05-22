@@ -1,12 +1,11 @@
----
-- name: Prepare Kubernetes node prerequisites
+- name: Prepare VM for Kubernetes
   hosts: all
-  become: yes
+  become: true
   tasks:
-    - name: Update apt and upgrade packages
+    - name: Update apt cache
       apt:
         update_cache: yes
-        upgrade: dist
+        cache_valid_time: 3600
 
     - name: Install required packages
       apt:
@@ -17,104 +16,41 @@
           - gnupg
           - lsb-release
           - software-properties-common
-          - jq
-          - conntrack
-          - socat
-          - ebtables
-          - ethtool
-          - net-tools
-          - ipvsadm
-          - ipset
-          - nftables
         state: present
 
-    - name: Disable swap temporarily
-      command: swapoff -a
-
-    - name: Disable swap permanently in fstab
-      replace:
+    - name: Disable swap
+      shell: swapoff -a
+      
+    - name: Remove swap from fstab
+      lineinfile:
         path: /etc/fstab
-        regexp: '^([^#].* swap .*)$'
-        replace: '# \1'
-
-    - name: Remove /swap.img file
-      file:
-        path: /swap.img
+        regexp: '.*swap.*'
         state: absent
-
-    - name: Create systemd service to disable swap at boot
-      copy:
-        dest: /etc/systemd/system/disable-swap.service
-        content: |
-          [Unit]
-          Description=Disable Swap
-          DefaultDependencies=no
-          Before=swap.target
-
-          [Service]
-          Type=oneshot
-          ExecStart=/sbin/swapoff -a
-          ExecStop=/sbin/swapoff -a
-          RemainAfterExit=true
-
-          [Install]
-          WantedBy=multi-user.target
-
-    - name: Enable and start disable-swap service
-      systemd:
-        name: disable-swap.service
-        enabled: yes
-        state: started
 
     - name: Load kernel modules
       modprobe:
         name: "{{ item }}"
-        state: present
       loop:
         - overlay
         - br_netfilter
-        - ip_vs
-        - ip_vs_rr
-        - ip_vs_wrr
-        - ip_vs_sh
-        - nf_conntrack
 
-    - name: Ensure kernel modules are loaded on boot
-      copy:
-        dest: /etc/modules-load.d/k8s.conf
-        content: |
-          overlay
-          br_netfilter
-          ip_vs
-          ip_vs_rr
-          ip_vs_wrr
-          ip_vs_sh
-          nf_conntrack
+    - name: Add kernel modules to modules-load
+      lineinfile:
+        path: /etc/modules-load.d/k8s.conf
+        line: "{{ item }}"
+        create: yes
+      loop:
+        - overlay
+        - br_netfilter
 
-    - name: Configure sysctl parameters for Kubernetes
-      copy:
-        dest: /etc/sysctl.d/k8s.conf
-        content: |
-          net.bridge.bridge-nf-call-iptables = 1
-          net.bridge.bridge-nf-call-ip6tables = 1
-          net.ipv4.ip_forward = 1
-
-    - name: Apply sysctl params
-      command: sysctl --system
-
-    - name: Enable and start systemd-resolved
-      systemd:
-        name: systemd-resolved
-        enabled: yes
-        state: started
-
-    - name: Remove /etc/resolv.conf if exists
-      file:
-        path: /etc/resolv.conf
-        state: absent
-
-    - name: Create symlink for resolv.conf to systemd stub
-      file:
-        src: /run/systemd/resolve/stub-resolv.conf
-        dest: /etc/resolv.conf
-        state: link
+    - name: Configure sysctl for Kubernetes
+      sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: yes
+        sysctl_file: /etc/sysctl.d/k8s.conf
+      loop:
+        - { name: net.bridge.bridge-nf-call-iptables, value: 1 }
+        - { name: net.bridge.bridge-nf-call-ip6tables, value: 1 }
+        - { name: net.ipv4.ip_forward, value: 1 }

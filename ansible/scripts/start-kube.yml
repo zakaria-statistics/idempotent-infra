@@ -1,172 +1,221 @@
 ---
-- name: Initialize Kubernetes control plane
+- name: Initialize Kubernetes Control Plane Node
   hosts: vm
   become: true
   vars:
-    pod_cidr: "10.244.0.0/16"
+    pod_cidr: "192.168.0.0/16"
     cri_socket: "unix:///run/containerd/containerd.sock"
-    node_name: "{{ ansible_hostname.split('.')[0] }}"
     control_plane_iface: "enp0s8"
-    kubernetes_version: "1.28.0"
     kubeadm_path: "/usr/bin/kubeadm"
-    kube_config_path: "{{ ansible_env.HOME }}/.kube"
+    kubectl_path: "/usr/bin/kubectl"
+    kube_config_path: "/home/{{ ansible_user }}/.kube"
+    kube_config_file: "{{ kube_config_path }}/config"
+    calico_manifest_url: "https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/calico.yaml"
 
   tasks:
+    - name: Set SystemdCgroup to true in containerd config
+      replace:
+        path: /etc/containerd/config.toml
+        regexp: 'SystemdCgroup = false'
+        replace: 'SystemdCgroup = true'
 
-    - name: Ensure kubeadm is installed
+    - name: Restart containerd to apply config
+      systemd:
+        name: containerd
+        state: restarted
+        enabled: true
+
+    - name: Add kube hostname to /etc/hosts
+      lineinfile:
+        path: /etc/hosts
+        line: "192.168.56.10 kube"
+        state: present
+        create: yes
+
+    - name: Ensure required tools are present
       stat:
-        path: "{{ kubeadm_path }}"
-      register: kubeadm_file
+        path: "{{ item }}"
+      loop:
+        - "{{ kubeadm_path }}"
+        - "{{ kubectl_path }}"
+      register: tools_check
 
-    - name: Fail if kubeadm is not found
+    - name: Fail if required tools are missing
       fail:
-        msg: "kubeadm not found at {{ kubeadm_path }}. Please ensure Kubernetes tools are installed."
-      when: not kubeadm_file.stat.exists
+        msg: "Missing required tool: {{ item.item }}"
+      loop: "{{ tools_check.results }}"
+      when: not item.stat.exists
 
-    - name: Get master IP from interface
+    - name: Fetch IP of control plane node
       command: ip -o -4 addr list {{ control_plane_iface }}
       register: ip_output
       changed_when: false
 
-    - name: Set master_ip fact
+    - name: Extract control plane IP
       set_fact:
         master_ip: "{{ ip_output.stdout.split()[3].split('/')[0] }}"
 
-    - name: Pull required kubeadm images
+    - name: Check if Kubernetes cluster is already initialized
+      stat:
+        path: /etc/kubernetes/manifests/kube-apiserver.yaml
+      register: kube_apiserver_stat
+
+    - name: kubeadm reset
+      command: "{{ kubeadm_path }} reset -f --cri-socket={{ cri_socket }}"
+      ignore_errors: true
+      when: kube_apiserver_stat.stat.exists
+
+    - name: Clean Kubernetes-related directories
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/cni/net.d
+        - /var/lib/etcd
+        - /var/lib/kubelet
+        - /etc/kubernetes
+      when: kube_apiserver_stat.stat.exists
+
+    - name: Wait briefly to ensure etcd is cleared
+      pause:
+        seconds: 5
+      when: kube_apiserver_stat.stat.exists
+
+    - name: Flush iptables
+      shell: |
+        iptables -F && iptables -t nat -F && iptables -t mangle -F
+        iptables -X && iptables -t nat -X && iptables -t mangle -X
+      when: kube_apiserver_stat.stat.exists
+
+    - name: Clear IPVS rules (if ipvsadm exists)
+      command: ipvsadm --clear
+      when: kube_apiserver_stat.stat.exists and ansible_facts.packages['ipvsadm'] is defined
+      ignore_errors: true
+
+
+    - name: Restart containerd and kubelet
+      systemd:
+        name: "{{ item }}"
+        state: restarted
+        enabled: yes
+      loop:
+        - containerd
+        - kubelet
+
+    - name: Wait for containerd socket
+      wait_for:
+        path: "{{ cri_socket | regex_replace('^unix://', '') }}"
+        timeout: 30
+
+    - name: Wait for kubelet to be active
+      shell: |
+        until systemctl is-active --quiet kubelet; do sleep 1; done
+      retries: 10
+      delay: 3
+      register: kubelet_ready
+      until: kubelet_ready.rc == 0
+
+    - name: Pre-pull Kubernetes images
       command: "{{ kubeadm_path }} config images pull --cri-socket={{ cri_socket }}"
 
-    - name: Check if Kubernetes is already initialized
-      stat:
-        path: /etc/kubernetes/manifests
-      register: manifests_dir
-
-    - name: Reset Kubernetes if already initialized
-      block:
-        - name: Perform kubeadm reset
-          command: "{{ kubeadm_path }} reset -f --cri-socket={{ cri_socket }}"
-          ignore_errors: yes
-
-        - name: Remove CNI config directory
-          file:
-            path: /etc/cni/net.d
-            state: absent
-
-        - name: Remove kube config directory
-          file:
-            path: "{{ kube_config_path }}"
-            state: absent
-
-        - name: Remove etcd data
-          file:
-            path: /var/lib/etcd
-            state: absent
-
-        - name: Flush iptables (all tables)
-          shell: |
-            iptables -F
-            iptables -X
-            iptables -t nat -F
-            iptables -t nat -X
-            iptables -t mangle -F
-            iptables -t mangle -X
-
-        - name: Clear IPVS tables (if ipvsadm exists)
-          command: ipvsadm --clear
-          when: ipvsadm_check.rc == 0
-          ignore_errors: yes
-
-        - name: Restart containerd and kubelet
-          systemd:
-            name: "{{ item }}"
-            state: restarted
-          loop:
-            - containerd
-            - kubelet
-      when: manifests_dir.stat.exists
-
-    - name: Check for ipvsadm
-      command: which ipvsadm
-      register: ipvsadm_check
-      ignore_errors: yes
-      changed_when: false
-
-    - name: Ensure kubelet is running
-      systemd:
-        name: kubelet
-        state: started
-        enabled: yes
-
-    - name: Check if cgroups are enabled
-      shell: grep -q cgroup /proc/filesystems
-      register: cgroup_check
-      failed_when: cgroup_check.rc != 0
-      changed_when: false
-
-    - name: Debug - Show Kubernetes containers
-      command: crictl --runtime-endpoint {{ cri_socket }} ps -a
-      register: crictl_output
-      changed_when: false
-      failed_when: false
-
-    - name: Debug - Show kubelet status
-      systemd:
-        name: kubelet
-        state: started
-      register: kubelet_status
-      failed_when: false
-      changed_when: false
-
-    - name: Debug - Show last 50 kubelet logs
-      command: journalctl -xeu kubelet -n 50
-      register: kubelet_logs
-      changed_when: false
-      failed_when: false
-
-    - name: Initialize Kubernetes control plane
+    - name: Run kubeadm init
       command: >
         {{ kubeadm_path }} init
         --apiserver-advertise-address={{ master_ip }}
         --apiserver-cert-extra-sans={{ master_ip }}
         --pod-network-cidr={{ pod_cidr }}
-        --node-name {{ node_name }}
-        --ignore-preflight-errors=Swap,Port-6443,Port-10259,Port-10257,Port-10250,Port-2379,Port-2380,FileAvailable--etc-kubernetes-manifests-kube-apiserver.yaml,FileAvailable--etc-kubernetes-manifests-kube-controller-manager.yaml,FileAvailable--etc-kubernetes-manifests-kube-scheduler.yaml,FileAvailable--etc-kubernetes-manifests-etcd.yaml,DirAvailable--var-lib-etcd
         --cri-socket={{ cri_socket }}
+        --node-name {{ ansible_hostname }}
+        --ignore-preflight-errors=Swap
       register: kubeadm_init
       failed_when: kubeadm_init.rc != 0
+
+    - name: Debug kubeadm init failure if occurred
+      debug:
+        var: kubeadm_init.stderr_lines
+      when: kubeadm_init.rc != 0
 
     - name: Create kube config directory
       file:
         path: "{{ kube_config_path }}"
         state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
         mode: "0755"
 
-    - name: Copy kubeconfig to user directory
+    - name: Copy admin.conf to user kube config
       copy:
         src: /etc/kubernetes/admin.conf
-        dest: "{{ kube_config_path }}/config"
+        dest: "{{ kube_config_file }}"
         remote_src: yes
-        owner: "{{ ansible_user_id }}"
-        group: "{{ ansible_user_id }}"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
         mode: "0644"
 
-    - name: Wait for API server to respond
+    - name: Export KUBECONFIG permanently in user bashrc
+      lineinfile:
+        path: "/home/{{ ansible_user }}/.bashrc"
+        line: "export KUBECONFIG={{ kube_config_file }}"
+        create: yes
+        insertafter: EOF
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
+
+    - name: Ensure root kube config is created
+      file:
+        path: /root/.kube
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Copy admin.conf to root kube config
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: yes
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Export KUBECONFIG permanently in root bashrc
+      lineinfile:
+        path: "/root/.bashrc"
+        line: "export KUBECONFIG=/root/.kube/config"
+        create: yes
+        insertafter: EOF
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Wait for API server to be ready
       uri:
         url: "https://{{ master_ip }}:6443/healthz"
         method: GET
-        validate_certs: no
+        validate_certs: false
         status_code: 200
       register: api_health
-      retries: 15
-      delay: 10
+      retries: 20
+      delay: 5
       until: api_health.status == 200
 
-    - name: Allow pods on control plane node
-      command: kubectl taint nodes --all node-role.kubernetes.io/control-plane-
+    - name: Remove control-plane taint (allow workloads on master)
+      command: >
+        {{ kubectl_path }} taint nodes --all node-role.kubernetes.io/control-plane-
       environment:
-        KUBECONFIG: "{{ kube_config_path }}/config"
+        KUBECONFIG: "{{ kube_config_file }}"
       ignore_errors: yes
 
-    - name: Install Calico network plugin
-      command: kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+    - name: Download Calico manifest
+      get_url:
+        url: "{{ calico_manifest_url }}"
+        dest: "/home/{{ ansible_user }}/calico.yaml"
+        mode: "0644"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+
+    - name: Apply Calico CNI
+      command: "{{ kubectl_path }} apply -f /home/{{ ansible_user }}/calico.yaml"
       environment:
-        KUBECONFIG: "{{ kube_config_path }}/config"
+        KUBECONFIG: "{{ kube_config_file }}"

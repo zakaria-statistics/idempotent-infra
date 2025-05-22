@@ -1,6 +1,6 @@
 ---
 - name: Install containerd on Ubuntu
-  hosts: all
+  hosts: vm
   become: yes
   tasks:
     - name: Install prerequisites
@@ -13,22 +13,26 @@
         state: present
         update_cache: yes
 
-    - name: Add Docker GPG key
-      ansible.builtin.apt_key:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        state: present
+    - name: Download Docker GPG key and save in binary format
+      ansible.builtin.shell: |
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+      args:
+        creates: /usr/share/keyrings/docker-archive-keyring.gpg
 
-    - name: Add Docker repository
+    - name: Add Docker APT repository
       ansible.builtin.apt_repository:
-        repo: "deb [arch={{ ansible_architecture }} signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release | lower }} stable"
         filename: docker
         state: present
 
+    - name: Update APT cache
+      ansible.builtin.apt:
+        update_cache: yes
+
     - name: Install containerd.io
-      apt:
+      ansible.builtin.apt:
         name: containerd.io
         state: present
-        update_cache: yes
 
     - name: Create containerd config directory
       file:

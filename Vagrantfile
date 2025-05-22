@@ -13,6 +13,9 @@ Vagrant.configure("2") do |config|
       vb.name = "ansible"
       vb.memory = 2048
       vb.cpus = 2
+      if Vagrant.has_plugin?("vagrant-disksize")
+        ansible.disksize.size = "20GB"
+      end
     end
 
     ansible.vm.network "private_network", ip: "192.168.56.20"
@@ -60,7 +63,7 @@ Vagrant.configure("2") do |config|
     kube.vm.provider "virtualbox" do |vb|
       vb.name = "kube"
       vb.memory = 4096
-      vb.cpus = 8
+      vb.cpus = 4
       if Vagrant.has_plugin?("vagrant-disksize")
         kube.disksize.size = "50GB"
       end

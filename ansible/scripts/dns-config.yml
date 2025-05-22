@@ -1,27 +1,25 @@
----
-- name: Configure DNS on Ubuntu
+- name: Configure DNS
   hosts: all
-  become: yes
+  become: true
   tasks:
-    - name: Stop systemd-resolved service
+    - name: Stop and disable systemd-resolved
       systemd:
         name: systemd-resolved
         state: stopped
         enabled: no
-      ignore_errors: yes
 
-    - name: Remove /etc/resolv.conf
+    - name: Remove existing resolv.conf
       file:
         path: /etc/resolv.conf
         state: absent
 
-    - name: Create /etc/resolv.conf with custom DNS servers
+    - name: Create new resolv.conf
       copy:
         dest: /etc/resolv.conf
         content: |
           nameserver 8.8.8.8
           options timeout:2 attempts:3 rotate single-request-reopen
 
-    - name: Apply netplan configuration
+    - name: Apply netplan
       command: netplan apply
-      ignore_errors: yes
+      ignore_errors: true
