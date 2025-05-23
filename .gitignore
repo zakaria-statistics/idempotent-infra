@@ -45,6 +45,3 @@ build/
 
 ### ignore notes ###
 notes.txt
-
-### env files ###
-*.env
